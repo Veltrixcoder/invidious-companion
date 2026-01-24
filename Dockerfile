@@ -91,15 +91,12 @@ COPY deno.lock ./
 COPY deno.json ./
 COPY ./src/ ./src/
 
-RUN --mount=type=bind,rw,source=.git,target=/app/.git \
-    --mount=type=cache,target="${DENO_DIR}" \
-    deno task compile
+RUN --mount=type=cache,target="${DENO_DIR}" \
+    deno compile --include ./src/lib/helpers/youtubePlayerReq.ts --include ./src/lib/helpers/getFetchClient.ts --output invidious_companion --allow-import=github.com:443,jsr.io:443,cdn.jsdelivr.net:443,esm.sh:443,deno.land:443 --allow-net --allow-env --allow-read --allow-sys=hostname --allow-write=/var/tmp/youtubei.js,/tmp/invidious-companion.sock src/main.ts --_version_date="unknown" --_version_commit="unknown"
 
-FROM debian:13-slim AS app
+FROM gcr.io/distroless/cc-debian12 AS app
 LABEL "language"="deno"
 LABEL "framework"="hono"
-
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY --from=user-stage /etc/group /etc/group
 COPY --from=user-stage /etc/passwd /etc/passwd
