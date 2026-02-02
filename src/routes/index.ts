@@ -40,6 +40,11 @@ export const companionRoutes = (
     );
 
     app.route("/youtubei/v1", youtubeApiPlayer);
+
+    app.get("/", (c) => {
+        return c.text("(this is not actual invidious its just designed to be used in place of it a custom invidious based on invidious-companion)");
+    });
+
     app.route("/latest_version", invidiousRouteLatestVersion);
     // Needs app for app.request in order to call /latest_version endpoint
     app.post("/download", getDownloadHandler(app));
