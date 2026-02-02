@@ -12,6 +12,7 @@ const USER_AGENT =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const APP_VERSION = "3.7.8";
 const YOUTUBE_TEST_URL = "https://www.youtube.com/watch?v=bzbsJGMVHxQ";
+const CUSTOM_PROXY_URL = "https://ytdlp-api-gbdn.onrender.com/proxies";
 
 // --- Types ---
 interface DeviceInfo {
@@ -81,7 +82,7 @@ async function fetchJson(
     return await response.json();
 }
 
-async function testProxyAgainstYouTube(proxyUrl: string): Promise<boolean> {
+async function testProxyAgainstYouTube(proxyUrl: string): Promise<number | boolean> {
     try {
         const proxyUrlObj = new URL(proxyUrl);
         const clientOptions: Deno.CreateHttpClientOptions = {};
@@ -113,9 +114,12 @@ async function testProxyAgainstYouTube(proxyUrl: string): Promise<boolean> {
         client.close();
 
         // YouTube should return 200 or a redirect (3xx)
-        return response.ok || (response.status >= 300 && response.status < 400);
+        if (response.ok || (response.status >= 300 && response.status < 400)) {
+            return true;
+        }
+        return response.status;
     } catch (err) {
-        console.error("[ProxyManager] Proxy test failed:", err);
+        // console.error("[ProxyManager] Proxy test failed:", err); // Verified by user request to just move to next
         return false;
     }
 }
@@ -238,6 +242,8 @@ export async function initProxyManager(source: number = 1): Promise<void> {
                 }
             } else if (vpnSource === 2) {
                 console.log("[ProxyManager] Using Urban VPN source");
+            } else if (vpnSource === 3) {
+                console.log("[ProxyManager] Using Custom Proxy API source");
             }
 
             // Fetch initial proxy
@@ -274,8 +280,8 @@ export async function rotateProxy(): Promise<string | null> {
             const urbanResult = await fetchUrbanProxy();
             if (urbanResult) {
                 console.log(`[ProxyManager] Testing Urban proxy against YouTube...`);
-                const isWorking = await testProxyAgainstYouTube(urbanResult.url);
-                if (isWorking) {
+                const result = await testProxyAgainstYouTube(urbanResult.url);
+                if (result === true) {
                     currentProxyUrl = urbanResult.url;
                     console.log(`[ProxyManager] ✅ New Urban proxy active: ${urbanResult.host}`);
                     return currentProxyUrl;
@@ -287,6 +293,60 @@ export async function rotateProxy(): Promise<string | null> {
             console.error("[ProxyManager] Failed to fetch/test Urban proxy", err);
         }
         console.error("[ProxyManager] ❌ Could not find a working Urban proxy");
+        currentProxyUrl = null;
+        return null;
+    }
+
+    if (vpnSource === 3) {
+        // Custom Proxy Logic
+        console.log("[ProxyManager] Fetching proxies from custom API...");
+
+        let attempts = 0;
+        const maxAttempts = 10; // Increased retry limit as requested
+
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(CUSTOM_PROXY_URL);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch proxies: ${response.statusText}`);
+                }
+                const data = await response.json() as { proxies: string[] };
+
+                if (!data.proxies || !Array.isArray(data.proxies) || data.proxies.length === 0) {
+                    console.log("[ProxyManager] No proxies returned from API, retrying...");
+                    attempts++;
+                    continue;
+                }
+
+                console.log(`[ProxyManager] Got ${data.proxies.length} proxies from API. Testing...`);
+
+                for (const proxy of data.proxies) {
+                    console.log(`[ProxyManager] Testing ${proxy}...`);
+                    const result = await testProxyAgainstYouTube(proxy);
+
+                    if (result === true) {
+                        currentProxyUrl = proxy;
+                        console.log(`[ProxyManager] ✅ New custom proxy active: ${proxy}`);
+                        return currentProxyUrl;
+                    } else if (typeof result === 'number') {
+                        console.log(`[ProxyManager] ❌ Proxy returned status ${result}, trying next...`);
+                    } else {
+                        console.log(`[ProxyManager] ❌ Proxy unreachable, trying next...`);
+                    }
+                }
+
+                console.log("[ProxyManager] All proxies from this batch failed. Refetching...");
+                attempts++;
+
+            } catch (err) {
+                console.error("[ProxyManager] Error fetching custom proxies:", err);
+                attempts++;
+                // Wait a bit before retrying if it's a fetch error
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+
+        console.error("[ProxyManager] ❌ Failed to find a working custom proxy after multiple attempts.");
         currentProxyUrl = null;
         return null;
     }
@@ -329,9 +389,9 @@ export async function rotateProxy(): Promise<string | null> {
 
             // Test proxy against YouTube
             console.log(`[ProxyManager] Testing proxy against YouTube...`);
-            const isWorking = await testProxyAgainstYouTube(proxyUrl);
+            const result = await testProxyAgainstYouTube(proxyUrl);
 
-            if (isWorking) {
+            if (result === true) {
                 currentProxyUrl = proxyUrl;
                 // Log without credentials for security
                 const sanitizedUrl = proxyUrl.replace(
