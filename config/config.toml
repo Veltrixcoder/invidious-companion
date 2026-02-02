@@ -29,7 +29,8 @@ auto_proxy = true                  # env: NETWORKING_AUTO_PROXY
 # VPN Source: Which service to use for auto_proxy
 # 1 = AntPeak (Default)
 # 2 = Urban VPN
-vpn_source = 2                     # env: NETWORKING_VPN_SOURCE
+# 3 = Custom Proxy API (self hosted)
+vpn_source = 3                    # env: NETWORKING_VPN_SOURCE
 
 # Manual Proxy (overrides auto_proxy if set)
 # proxy = "http://user:pass@host:port"
